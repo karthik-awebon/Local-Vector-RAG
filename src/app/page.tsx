@@ -15,7 +15,7 @@ export default function ClientRagDashboard() {
   const [currentChunks, setCurrentChunks] = useState<string[]>([]);
 
   const { status: workerStatus, progress: workerProgress, output, error: workerError, compute } = useEmbeddingWorker();
-  const { isInitialized: dbReady, error: dbError, insertDocument, vectorSearch } = useVectorDB();
+  const { isInitialized: dbReady, error: dbError, insertDocument, vectorSearch, clearDatabase } = useVectorDB();
   const { 
     status: chatStatus, 
     progress: chatProgress, 
@@ -104,6 +104,13 @@ export default function ClientRagDashboard() {
     }
   };
 
+  const handleClearData = async () => {
+    if (confirm('Are you sure you want to clear all indexed data?')) {
+      await clearDatabase();
+      setSearchResults([]);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8 font-[family-name:var(--font-geist-sans)] text-black">
       <main className="max-w-4xl mx-auto space-y-8">
@@ -132,16 +139,27 @@ export default function ClientRagDashboard() {
         </header>
 
         {/* DB & Model Status */}
-        <div className="flex items-center space-x-6 text-sm">
-          <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${dbReady ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div>
-            <span className="text-gray-700">Database {dbReady ? 'Ready' : 'Initializing...'}</span>
-          </div>
-          {workerStatus === 'loading' && (
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
-              <span className="text-blue-600">Loading Embedder: {Math.round((workerProgress || 0) * 100)}%</span>
+              <div className={`w-3 h-3 rounded-full ${dbReady ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div>
+              <span className="text-gray-700">Database {dbReady ? 'Ready' : 'Initializing...'}</span>
             </div>
+            {workerStatus === 'loading' && (
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+                <span className="text-blue-600">Loading Embedder: {Math.round((workerProgress || 0) * 100)}%</span>
+              </div>
+            )}
+          </div>
+          
+          {dbReady && (
+            <button 
+              onClick={handleClearData}
+              className="text-red-600 hover:text-red-800 font-medium transition-colors"
+            >
+              Clear Indexed Data
+            </button>
           )}
         </div>
 
