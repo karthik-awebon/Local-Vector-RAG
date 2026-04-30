@@ -9,6 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.83",
+    "@orama/orama": "^3.1.18",
+    "@orama/plugin-match-highlight": "^3.1.18",
+    "@xenova/transformers": "^2.17.2",
+    "idb-keyval": "^6.2.2",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
