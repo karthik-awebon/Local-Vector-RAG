@@ -27,13 +27,16 @@ export default function ClientRagDashboard() {
 
   // Handle the completion of embedding generation
   useEffect(() => {
-    if (workerStatus === 'complete' && output) {
+    if (workerStatus === 'complete' && output && lastAction) {
+      console.log('[Page] Worker computation complete. Action:', lastAction);
+      
       if (lastAction === 'indexing') {
         const timestamp = new Date().toISOString();
         
         if (output.type === 'batch') {
           const { data, dims } = output;
           const [batchSize, dimSize] = dims;
+          console.log(`[Page] Indexing batch of ${batchSize} chunks...`);
           
           for (let i = 0; i < batchSize; i++) {
             const start = i * dimSize;
@@ -41,6 +44,7 @@ export default function ClientRagDashboard() {
             insertDocument(currentChunks[i], embedding, timestamp);
           }
         } else {
+          console.log('[Page] Indexing single document...');
           insertDocument(inputText, output.data, timestamp);
         }
         
@@ -49,10 +53,13 @@ export default function ClientRagDashboard() {
         setLastAction(null);
       } else if (lastAction === 'searching' || lastAction === 'chatting') {
         const performSearch = async () => {
+          console.log('[Page] Performing vector search with worker output. Vector sample:', output.data?.slice(0, 5));
           const results = await vectorSearch(output.data);
+          console.log('[Page] Search results received:', results.length);
           setSearchResults(results);
           
           if (lastAction === 'chatting') {
+            console.log('[Page] Preparing context for Chat AI...');
             // Construct context for RAG
             const context = results.map(r => r.document.content).join('\n---\n');
             generate([

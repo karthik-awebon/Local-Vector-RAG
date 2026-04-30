@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
-import { create, insert, search, Orama, AnyDocument } from '@orama/orama';
-import { 
-    afterInsert as highlightAfterInsert, 
-    saveWithHighlight, 
-    loadWithHighlight 
+import { create, insert, search, count, Orama, AnyDocument } from '@orama/orama';
+import {
+    afterInsert as highlightAfterInsert,
+    saveWithHighlight,
+    loadWithHighlight
 } from '@orama/plugin-match-highlight';
 import { get, set } from 'idb-keyval';
 
@@ -22,22 +22,9 @@ export function useVectorDB() {
     // Initialize the database
     useEffect(() => {
         const initDB = async () => {
+            console.log('[useVectorDB] Initializing database...');
             try {
-                // 1. Try to load from IndexedDB
-                const savedSnapshot = await get(DB_STORAGE_KEY);
-                
-                if (savedSnapshot) {
-                    try {
-                        const restoredDb = await loadWithHighlight(savedSnapshot);
-                        setDb(restoredDb);
-                        setIsInitialized(true);
-                        return;
-                    } catch (restoreErr) {
-                        console.error('Failed to restore DB, creating fresh instance', restoreErr);
-                    }
-                }
-
-                // 2. Create fresh instance if no snapshot or restore failed
+                // 1. Create the instance first (required for Orama 3.x load)
                 const newDb = await create({
                     schema: {
                         content: 'string',
@@ -51,10 +38,27 @@ export function useVectorDB() {
                         },
                     ],
                 });
-                
+
+                // 2. Try to load from IndexedDB
+                const savedSnapshot = await get(DB_STORAGE_KEY);
+                console.log('[useVectorDB] Snapshot from IndexedDB:', savedSnapshot ? 'Found' : 'Not found');
+
+                if (savedSnapshot) {
+                    try {
+                        console.log('[useVectorDB] Attempting to restore from snapshot...');
+                        // In Orama 3.x, loadWithHighlight takes (db, snapshot)
+                        await loadWithHighlight(newDb, savedSnapshot);
+                        console.log('[useVectorDB] Database restored successfully');
+                    } catch (restoreErr) {
+                        console.error('[useVectorDB] Failed to restore DB, proceeding with empty DB:', restoreErr);
+                        // We continue with the fresh newDb we already created
+                    }
+                }
+
                 setDb(newDb);
                 setIsInitialized(true);
             } catch (err) {
+                console.error('[useVectorDB] Fatal initialization error:', err);
                 setError(err instanceof Error ? err.message : String(err));
             }
         };
@@ -65,40 +69,71 @@ export function useVectorDB() {
     }, [db]);
 
     const insertDocument = useCallback(async (content: string, embedding: number[], metadata: string = '') => {
-        if (!db) return;
+        if (!db) {
+            console.error('[useVectorDB] Cannot insert: Database not initialized');
+            return;
+        }
 
         try {
+            console.log('[useVectorDB] Inserting document:', {
+                contentSnippet: content.substring(0, 50) + '...',
+                embeddingLength: embedding.length,
+                metadata
+            });
+
+            if (embedding.length !== 384) {
+                console.error(`[useVectorDB] Vector dimension mismatch! Expected 384, got ${embedding.length}`);
+            }
+
             // Insert into Orama
-            await insert(db, {
+            const id = await insert(db, {
                 content,
                 embedding,
                 metadata,
             });
 
+            const totalDocs = await count(db);
+            console.log(`[useVectorDB] Insert successful. ID: ${id}. Total docs in DB: ${totalDocs}`);
+
             // Persist snapshot to IndexedDB
             const snapshot = await saveWithHighlight(db);
             await set(DB_STORAGE_KEY, snapshot);
-            
+
         } catch (err) {
+            console.error('[useVectorDB] Insert error:', err);
             setError(err instanceof Error ? err.message : String(err));
         }
     }, [db]);
 
     const vectorSearch = useCallback(async (queryVector: number[], limit: number = 5) => {
-        if (!db) return [];
+        if (!db) {
+            console.error('[useVectorDB] Cannot search: Database not initialized');
+            return [];
+        }
 
         try {
+            const totalDocs = await count(db);
+            console.log(`[useVectorDB] Starting search. Total docs in DB: ${totalDocs}, Query vector length: ${queryVector.length}`);
+
+            if (totalDocs === 0) {
+                console.warn('[useVectorDB] Search called on an empty database');
+                return [];
+            }
+
             const results = await search(db, {
                 mode: 'vector',
                 vector: {
                     value: queryVector,
                     property: 'embedding',
                 },
+                similarity: 0.4, // Set a very low threshold to see if anything matches
                 limit,
             });
 
+            console.log(`[useVectorDB] Search complete. Found ${results.hits.length} hits`, results.hits);
             return results.hits;
         } catch (err) {
+            console.error('[useVectorDB] Search error:', err);
             setError(err instanceof Error ? err.message : String(err));
             return [];
         }
