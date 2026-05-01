@@ -1,10 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { create, insert, search, count, Orama, AnyDocument } from '@orama/orama';
-import {
-    afterInsert as highlightAfterInsert,
-    saveWithHighlight,
-    loadWithHighlight
-} from '@orama/plugin-match-highlight';
+import { create, insert, search, count, Orama, AnyDocument, save, load } from '@orama/orama';
 import { get, set, del } from 'idb-keyval';
 
 export interface SearchResult {
@@ -29,12 +24,6 @@ export function useVectorDB() {
                     embedding: 'vector[384]',
                     metadata: 'string',
                 },
-                plugins: [
-                    {
-                        name: 'highlight',
-                        afterInsert: highlightAfterInsert,
-                    },
-                ],
             });
 
             // 2. Try to load from IndexedDB
@@ -44,8 +33,7 @@ export function useVectorDB() {
             if (savedSnapshot) {
                 try {
                     console.log('[useVectorDB] Attempting to restore from snapshot...');
-                    // In Orama 3.x, loadWithHighlight takes (db, snapshot)
-                    await loadWithHighlight(newDb, savedSnapshot);
+                    await load(newDb, savedSnapshot);
                     console.log('[useVectorDB] Database restored successfully');
                 } catch (restoreErr) {
                     console.error('[useVectorDB] Failed to restore DB, proceeding with empty DB:', restoreErr);
@@ -96,7 +84,7 @@ export function useVectorDB() {
             console.log(`[useVectorDB] Insert successful. ID: ${id}. Total docs in DB: ${totalDocs}`);
 
             // Persist snapshot to IndexedDB
-            const snapshot = await saveWithHighlight(db);
+            const snapshot = await save(db);
             await set(DB_STORAGE_KEY, snapshot);
 
         } catch (err) {
