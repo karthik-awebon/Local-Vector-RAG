@@ -28,7 +28,7 @@ export function useRAG() {
       
       if (output.type === 'batch') {
         const { data, dims } = output;
-        const [batchSize, dimSize] = dims;
+        const [batchSize, dimSize] = dims || [1, data.length];
         
         for (let i = 0; i < batchSize; i++) {
           const start = i * dimSize;

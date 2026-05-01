@@ -18,7 +18,7 @@ class PipelineSingleton {
         if (this.instance === null) {
             this.instance = pipeline(this.task, this.model, { progress_callback });
         }
-        return this.instance;
+        return this.instance!;
     }
 }
 
