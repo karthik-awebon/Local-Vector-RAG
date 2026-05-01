@@ -3,15 +3,25 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 export interface WorkerState {
     status: 'idle' | 'loading' | 'processing' | 'complete' | 'error';
     progress?: number;
-    output?: any;
+    output?: {
+        type: 'batch' | 'single';
+        data: number[];
+        dims?: number[];
+    };
     error?: string;
 }
 
-export function useEmbeddingWorker() {
+export function useEmbeddingWorker(onComplete?: (output: { type: 'batch' | 'single'; data: number[]; dims?: number[] }) => void) {
     const workerRef = useRef<Worker | null>(null);
     const [state, setState] = useState<WorkerState>({
         status: 'idle',
     });
+
+    // Keep the callback in a ref to avoid re-subscribing the worker on every render
+    const onCompleteRef = useRef(onComplete);
+    useEffect(() => {
+        onCompleteRef.current = onComplete;
+    }, [onComplete]);
 
     useEffect(() => {
         // Initialize the worker on client-side only
@@ -31,6 +41,9 @@ export function useEmbeddingWorker() {
                 case 'complete':
                     console.log('[useEmbeddingWorker] Embedding computation complete');
                     setState({ status: 'complete', output });
+                    if (onCompleteRef.current) {
+                        onCompleteRef.current(output);
+                    }
                     break;
                 case 'error':
                     console.error('[useEmbeddingWorker] Worker reported error:', error);

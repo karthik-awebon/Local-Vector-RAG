@@ -1,6 +1,6 @@
 import type { Pipeline } from '@xenova/transformers';
 
-// @ts-ignore
+// @ts-expect-error - transformers.js dist types are sometimes mismatched
 import { pipeline, env } from '@xenova/transformers/dist/transformers.min.js';
 
 // Configuration for the transformers library
@@ -14,7 +14,7 @@ class PipelineSingleton {
     static model = 'Xenova/all-MiniLM-L6-v2';
     static instance: Promise<Pipeline> | null = null;
 
-    static async getInstance(progress_callback?: (progress: any) => void): Promise<Pipeline> {
+    static async getInstance(progress_callback?: (progress: { status: string; progress: number; loaded: number; total: number; file: string }) => void): Promise<Pipeline> {
         if (this.instance === null) {
             this.instance = pipeline(this.task, this.model, { progress_callback });
         }
@@ -56,8 +56,8 @@ self.addEventListener('message', async (event: MessageEvent) => {
 
         const duration = performance.now() - startTime;
         console.log(`[Worker] Extraction complete in ${duration.toFixed(2)}ms`, {
-            dims: output.dims,
-            dataType: output.data?.constructor.name
+            dims: (output as { dims: number[] }).dims,
+            dataType: (output as { data: { constructor: { name: string } } }).data?.constructor.name
         });
 
         // Prepare response based on input type

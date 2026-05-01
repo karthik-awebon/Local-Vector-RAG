@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { create, insert, search, count, Orama, AnyDocument, save, load } from '@orama/orama';
 import { get, set, del } from 'idb-keyval';
 
@@ -10,7 +10,7 @@ export interface SearchResult {
 const DB_STORAGE_KEY = 'orama-vector-db-snapshot';
 
 export function useVectorDB() {
-    const [db, setDb] = useState<Orama<any> | null>(null);
+    const [db, setDb] = useState<Orama<AnyDocument> | null>(null);
     const [isInitialized, setIsInitialized] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -49,9 +49,12 @@ export function useVectorDB() {
         }
     }, []);
 
+    const isInitializing = useRef(false);
+
     // Initialize the database
     useEffect(() => {
-        if (typeof window !== 'undefined' && !db) {
+        if (typeof window !== 'undefined' && !db && !isInitializing.current) {
+            isInitializing.current = true;
             initDB();
         }
     }, [db, initDB]);
