@@ -7,14 +7,16 @@ This project implements a fully local, browser-native Retrieval-Augmented Genera
 ```mermaid
 graph TD
     subgraph UI_Layer [Browser UI - React 19]
-        User([User Input]) --> Dashboard[src/app/page.tsx]
-        Dashboard --> ResultsDisplay[Results/Chat Display]
+        User([User Input / File]) --> Dashboard[src/app/page.tsx]
+        Dashboard --> Comp[src/components/*]
+        Comp --> ResultsDisplay[Results/Chat Display]
     end
 
-    subgraph Hook_Layer [Coordination Hooks]
-        Dashboard --> useEW[useEmbeddingWorker]
-        Dashboard --> useVDB[useVectorDB]
-        Dashboard --> useChat[useChatModel]
+    subgraph Orchestration_Layer [Hook Layer]
+        Dashboard --> useRAG[useRAG Orchestrator]
+        useRAG --> useEW[useEmbeddingWorker]
+        useRAG --> useVDB[useVectorDB]
+        useRAG --> useChat[useChatModel]
     end
 
     subgraph Computation_Layer [Worker Thread]
@@ -34,36 +36,47 @@ graph TD
     end
 
     %% Flow: Indexing
-    User -- "1. Index Text" --> Dashboard
-    Dashboard -- "2. Chunk" --> useEW
-    useEW -- "3. Vectorize" --> Worker
-    Worker -- "4. Embedding" --> useVDB
-    useVDB -- "5. Store" --> Orama
+    User -- "1. Index Text/PDF/Docx" --> Dashboard
+    Dashboard -- "2. Parse & Chunk" --> useRAG
+    useRAG -- "3. Vectorize" --> useEW
+    useEW -- "4. Background Process" --> Worker
+    Worker -- "5. Return Embeddings" --> useRAG
+    useRAG -- "6. Store" --> useVDB
+    useVDB -- "7. Persistence" --> IDB
 
     %% Flow: RAG
-    User -- "6. Search/Chat" --> Dashboard
-    Dashboard -- "7. Vectorize Query" --> useEW
-    useEW -- "8. Query Vector" --> useVDB
-    useVDB -- "9. Search" --> Orama
-    Orama -- "10. Context" --> useChat
-    useChat -- "11. Generate Response" --> Dashboard
+    User -- "8. Search/Chat" --> Dashboard
+    Dashboard -- "9. Vectorize Query" --> useRAG
+    useRAG -- "10. Query Vector" --> useEW
+    useEW -- "11. Results" --> useRAG
+    useRAG -- "12. Search" --> useVDB
+    useVDB -- "13. Context" --> useRAG
+    useRAG -- "14. Grounded Prompt" --> useChat
+    useChat -- "15. Streamed Response" --> Dashboard
 ```
 
 ## Component Breakdown
 
-### 1. UI Layer (`src/app/page.tsx`)
-The main entry point that manages tab state (Index, Search, Chat) and orchestrates the interaction between the different RAG hooks.
+### 1. UI Layer (`src/components/`)
+The UI is composed of decoupled React components that strictly handle presentation. 
+- **IndexSection**: Handles text input and file uploads (PDF/Word).
+- **ChatSection**: Handles user queries.
+- **SourceGrid**: Displays evidence retrieved from the vector database.
 
-### 2. Embedding Worker (`src/lib/worker.ts`)
+### 2. Orchestrator Hook (`src/hooks/useRAG.ts`)
+The `useRAG` hook is the central brain of the application. It coordinates the lifecycle of embeddings, database inserts, and LLM generation. It handles asynchronous events from the Web Worker and ensures state consistency across the RAG pipeline.
+
+### 3. Embedding Worker (`src/lib/worker.ts`)
 To prevent UI jank, all vectorization is offloaded to a Web Worker. It uses **Transformers.js** to run the `all-MiniLM-L6-v2` model. It handles both single query vectorization and batch processing for document chunks.
 
-### 3. Vector Database (`src/hooks/useVectorDB.ts`)
+### 4. Vector Database (`src/hooks/useVectorDB.ts`)
 Uses **Orama** to perform fast in-memory vector similarity searches.
 - **Persistence:** Snapshots the database to **IndexedDB** using `idb-keyval` every time a document is indexed.
 - **Retrieval:** On startup, it attempts to restore the state from the IndexedDB snapshot.
 
-### 4. Chat Engine (`src/hooks/useChatModel.ts`)
+### 5. Chat Engine (`src/hooks/useChatModel.ts`)
 Uses **Web-LLM** to run large language models (like Llama 3.1) directly in the browser using WebGPU. It receives retrieved context from the Vector DB and constructs a prompt for the local LLM to generate grounded answers.
 
-### 5. Utilities (`src/utils/chunking.ts`)
-Handles the sliding-window chunking logic to break down large documents into manageable pieces for embedding and retrieval.
+### 6. Utilities (`src/utils/`)
+- **chunking.ts**: Sliding-window logic for breaking text into overlapping segments.
+- **fileParsing.ts**: Client-side extraction using `pdfjs-dist` and `mammoth`.

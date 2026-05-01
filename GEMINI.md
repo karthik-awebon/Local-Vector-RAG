@@ -11,15 +11,15 @@ The **Semantic Search Dashboard** is a private, browser-native Local Retrieval-A
 - **Framework:** Next.js 16+ (App Router, Turbopack)
 - **UI:** React 19, Tailwind CSS 4
 - **Local Embeddings:** `@xenova/transformers` (running `all-MiniLM-L6-v2` in a Web Worker)
-- **Vector Database:** `@orama/orama` with `@orama/plugin-match-highlight`
+- **Vector Database:** `@orama/orama`
 - **Local LLM:** `@mlc-ai/web-llm` (e.g., `Llama-3.1-8B-Instruct`)
 - **Persistence:** `idb-keyval` (IndexedDB) for storing vector database snapshots
+- **Document Parsing:** `pdfjs-dist` (PDFs), `mammoth` (Word .docx)
 
 ### Architecture
 
-1.  **Indexing Flow:** Text Input -> `chunkText` (Utility) -> `useEmbeddingWorker` -> `worker.ts` (Web Worker using Transformers.js) -> `useVectorDB` -> Orama DB -> IndexedDB (Snapshot).
-2.  **Search Flow:** Query Input -> `useEmbeddingWorker` -> Query Vector -> `useVectorDB` (Orama Vector Search) -> Ranked Hits.
-3.  **Chat Flow:** Query Input -> Vector Search -> Context Retrieval -> `useChatModel` (Web-LLM) -> Streamed AI Response.
+1.  **Indexing Flow:** Text/File Input -> `parseFile` (Utility) -> `chunkText` (Utility) -> `useRAG` -> `useEmbeddingWorker` -> `worker.ts` (Web Worker) -> `useVectorDB` -> Orama DB -> IndexedDB (Snapshot).
+2.  **Search & Chat Flow:** Query Input -> `useRAG` -> `useEmbeddingWorker` -> Query Vector -> `useVectorDB` (Orama Vector Search) -> Ranked Hits -> `useChatModel` (Web-LLM) -> Streamed AI Response.
 
 ## Building and Running
 
@@ -41,14 +41,18 @@ npm run lint
 
 ## Directory Structure
 
-- `src/app/`: Next.js App Router pages and layouts. `page.tsx` contains the main dashboard logic.
-- `src/hooks/`: Custom React hooks for modularizing RAG logic.
+- `src/app/`: Next.js App Router pages and layouts.
+- `src/components/`: Modular, decoupled UI components (Header, IndexSection, ChatSection, etc.).
+- `src/hooks/`: Custom React hooks for RAG logic.
+  - `useRAG.ts`: **Main Orchestrator** coordinating workers, DB, and chat.
   - `useVectorDB.ts`: Manages Orama instance, persistence, and vector search.
   - `useEmbeddingWorker.ts`: Interface for the embedding Web Worker.
   - `useChatModel.ts`: Interface for the Web-LLM local engine.
 - `src/lib/`: Core libraries and workers.
   - `worker.ts`: Web Worker implementation for heavy ML computation (Transformers.js).
-- `src/utils/`: Shared utilities like `chunking.ts`.
+- `src/utils/`: Shared utilities.
+  - `chunking.ts`: Text chunking logic.
+  - `fileParsing.ts`: Client-side PDF/Word parsing logic.
 
 ## Development Conventions
 
@@ -58,13 +62,12 @@ npm run lint
 
 ### Vector Database (Orama)
 - Orama snapshots are persisted to IndexedDB under the key `orama-vector-db-snapshot`.
-- When modifying the schema in `useVectorDB.ts`, ensure that snapshot loading handles migrations or clear the existing snapshot.
 
 ### Next.js 16 + Turbopack
-- `next.config.ts` includes specific Turbopack `resolveAlias` and `serverExternalPackages` configurations to handle Node-specific modules (like `fs`, `path`) that are not available in the browser during ML model execution.
+- `next.config.ts` handles Node-specific modules (like `fs`, `path`) that are not available in the browser during ML model execution.
 
 ## Future Roadmap (TODOs)
-- [ ] Support for PDF/Word document uploads.
+- [x] Support for PDF/Word document uploads.
 - [ ] Advanced chunking strategies (semantic chunking).
 - [ ] Metadata filtering in vector search.
 - [ ] Export/Import functionality for the indexed knowledge base.
