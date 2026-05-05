@@ -23,7 +23,8 @@ export default function ClientRagDashboard() {
     worker,
     db,
     chat,
-    isProcessing
+    isProcessing,
+    latency
   } = useRAG();
 
   return (
@@ -66,6 +67,7 @@ export default function ClientRagDashboard() {
             <ChatResponse 
               output={chat.output} 
               status={chat.status} 
+              latency={latency}
             />
 
             <SourceGrid 

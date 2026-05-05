@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useEmbeddingWorker } from './useEmbeddingWorker';
 import { useVectorDB, SearchResult } from './useVectorDB';
 import { useChatModel } from './useChatModel';
@@ -15,21 +15,29 @@ export function useRAG() {
   const [currentChunks, setCurrentChunks] = useState<string[]>([]);
   const [pendingInput, setPendingInput] = useState<string>('');
   const [pendingQuery, setPendingQuery] = useState<string>('');
+  const [latency, setLatency] = useState<number | null>(null);
+  const startTimeRef = useRef<number | null>(null);
 
   const db = useVectorDB();
   const chat = useChatModel();
   const { initEngine, status: chatStatus, generate, output: chatOutput, progress: chatProgress, error: chatError } = chat;
+
+  useEffect(() => {
+    if (chatStatus === 'generating' && chatOutput.length > 0 && startTimeRef.current && latency === null) {
+      setLatency(performance.now() - startTimeRef.current);
+    }
+  }, [chatOutput, chatStatus, latency]);
 
   const handleWorkerComplete = useCallback(async (output: { type: 'batch' | 'single'; data: number[]; dims?: number[] }) => {
     if (!lastAction) return;
 
     if (lastAction === 'indexing') {
       const timestamp = new Date().toISOString();
-      
+
       if (output.type === 'batch') {
         const { data, dims } = output;
         const [batchSize, dimSize] = dims || [1, data.length];
-        
+
         for (let i = 0; i < batchSize; i++) {
           const start = i * dimSize;
           const embedding = data.slice(start, start + dimSize);
@@ -38,14 +46,14 @@ export function useRAG() {
       } else {
         await db.insertDocument(pendingInput, output.data, timestamp);
       }
-      
+
       setPendingInput('');
       setCurrentChunks([]);
       setLastAction(null);
     } else if (lastAction === 'chatting') {
       const results = await db.vectorSearch(output.data);
       setSearchResults(results);
-      
+
       const context = results.map(r => r.document.content).join('\n---\n');
       await generate([
         { role: 'system', content: 'You are a helpful assistant. Use the provided context to answer the user query. If the answer is not in the context, say you do not know.' },
@@ -64,7 +72,7 @@ export function useRAG() {
 
   const indexDocument = useCallback((text: string) => {
     if (text.trim() && db.isInitialized) {
-      const chunks = chunkText(text, 100, 20);
+      const chunks = chunkText(text, 500, 50);
       setCurrentChunks(chunks);
       setPendingInput(text);
       setLastAction('indexing');
@@ -76,6 +84,8 @@ export function useRAG() {
     if (query.trim() && db.isInitialized && chatStatus === 'ready') {
       setPendingQuery(query);
       setLastAction('chatting');
+      setLatency(null);
+      startTimeRef.current = performance.now();
       worker.compute(query);
     }
   }, [db.isInitialized, chatStatus, worker]);
@@ -95,14 +105,15 @@ export function useRAG() {
     worker,
     db,
     chat: {
-        status: chatStatus,
-        output: chatOutput,
-        progress: chatProgress,
-        error: chatError,
-        initEngine,
-        generate
+      status: chatStatus,
+      output: chatOutput,
+      progress: chatProgress,
+      error: chatError,
+      initEngine,
+      generate
     },
     isProcessing: worker.status === 'processing',
-    lastAction
+    lastAction,
+    latency
   };
 }
